@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,15 +15,20 @@ from app.middlewares.logging import RequestLoggingMiddleware
 # Import Routers
 from app.routers import auth, resume, job_description, analysis, report, chat, interview
 
-# Auto-create database tables on startup (Postgres or SQLite fallback)
-logger.info("Initializing database schemas auto-creation...")
-Base.metadata.create_all(bind=engine)
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup actions
+    # Startup actions: initialize database schemas safely
     logger.info("FastAPI Application starting up...")
-    prewarm_models()
+    try:
+        logger.info("Initializing database schemas auto-creation...")
+        Base.metadata.create_all(bind=engine)
+        logger.info("Database schemas verified.")
+    except Exception as e:
+        logger.warning(f"Database schema auto-creation encountered non-fatal error: {e}")
+
+    # Launch AI/NLP model pre-warming in background to allow Uvicorn to bind port immediately
+    asyncio.create_task(asyncio.to_thread(prewarm_models))
+    
     yield
     # Shutdown actions
     logger.info("FastAPI Application shutting down...")
