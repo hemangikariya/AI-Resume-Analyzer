@@ -1,0 +1,112 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply transition-colors duration-300 font-sans antialiased;
+    background-attachment: fixed;
+  }
+}
+
+/* Light / Dark Mode background configs */
+body.light-theme {
+  background-color: #F3F4F6;
+  background-image: radial-gradient(at 0% 0%, hsla(210,100%,96%,1) 0, transparent 50%),
+                    radial-gradient(at 50% 0%, hsla(220,100%,97%,1) 0, transparent 50%),
+                    radial-gradient(at 100% 0%, hsla(230,100%,95%,1) 0, transparent 50%);
+  color: #0F172A;
+}
+
+body.dark-theme {
+  background-color: #080B10;
+  background-image: radial-gradient(at 0% 0%, rgba(14, 165, 233, 0.08) 0, transparent 50%),
+                    radial-gradient(at 50% 0%, rgba(99, 102, 241, 0.08) 0, transparent 50%),
+                    radial-gradient(at 100% 0%, rgba(37, 99, 235, 0.08) 0, transparent 50%);
+  color: #F3F4F6;
+}
+
+/* Glassmorphism Styles */
+.glass-panel {
+  @apply backdrop-blur-md rounded-2xl transition-all duration-300;
+}
+
+body.light-theme .glass-panel {
+  background: rgba(255, 255, 255, 0.65);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.04);
+}
+
+body.dark-theme .glass-panel {
+  background: rgba(17, 24, 39, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+}
+
+/* Glass Inputs */
+.glass-input {
+  @apply w-full px-4 py-2.5 rounded-xl outline-none transition-all duration-200 border text-sm;
+}
+
+body.light-theme .glass-input {
+  background: rgba(255, 255, 255, 0.8);
+  border-color: rgba(0, 0, 0, 0.1);
+  color: #0F172A;
+}
+
+body.light-theme .glass-input:focus {
+  border-color: #2563EB;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+}
+
+body.dark-theme .glass-input {
+  background: rgba(17, 24, 39, 0.8);
+  border-color: rgba(255, 255, 255, 0.1);
+  color: #F3F4F6;
+}
+
+body.dark-theme .glass-input:focus {
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.15);
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+body.light-theme ::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 4px;
+}
+
+body.dark-theme ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+}
+
+/* Shimmer Loading Animations */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.shimmer {
+  background: linear-gradient(90deg, transparent 25%, rgba(255,255,255,0.08) 50%, transparent 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+body.light-theme .shimmer {
+  background: linear-gradient(90deg, transparent 25%, rgba(0,0,0,0.05) 50%, transparent 75%);
+  background-size: 200% 100%;
+}
