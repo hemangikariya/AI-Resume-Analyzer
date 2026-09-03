@@ -1,60 +1,58 @@
-import spacy
-import spacy.cli
-from sentence_transformers import SentenceTransformer
+import threading
 from app.core.logger import logger
 
-# In-memory global cache holders
+# In-memory thread-safe global cache holders
 _spacy_model = None
+_spacy_lock = threading.Lock()
+
 _sentence_transformer_model = None
+_sentence_transformer_lock = threading.Lock()
 
 def get_spacy_model():
     """
-    Retrieves the spaCy English model. Programmatically downloads it
-    if it is not already installed.
+    Thread-safe lazy loader for spaCy English model.
+    Only imports and loads spaCy when resume parsing or entity extraction is first executed.
     """
     global _spacy_model
     if _spacy_model is None:
-        model_name = "en_core_web_sm"
-        try:
-            logger.info(f"Loading spaCy model: {model_name}")
-            _spacy_model = spacy.load(model_name)
-        except OSError:
-            logger.warning(f"{model_name} not found. Attempting to download it programmatically...")
-            try:
-                spacy.cli.download(model_name)
-                _spacy_model = spacy.load(model_name)
-                logger.info(f"Successfully downloaded and loaded {model_name}")
-            except Exception as e:
-                logger.error(f"Failed to download spaCy model {model_name}: {e}")
-                # Fallback to a blank model if all else fails
-                logger.info("Falling back to blank English spaCy model")
-                _spacy_model = spacy.blank("en")
+        with _spacy_lock:
+            if _spacy_model is None:
+                import spacy
+                import spacy.cli
+                model_name = "en_core_web_sm"
+                try:
+                    logger.info(f"spaCy model loading lazily: {model_name}")
+                    _spacy_model = spacy.load(model_name)
+                    logger.info("spaCy model loaded lazily")
+                except OSError:
+                    logger.warning(f"{model_name} not found locally. Downloading lazily...")
+                    try:
+                        spacy.cli.download(model_name)
+                        _spacy_model = spacy.load(model_name)
+                        logger.info("spaCy model loaded lazily")
+                    except Exception as e:
+                        logger.error(f"Failed to download spaCy model {model_name}: {e}")
+                        logger.info("Falling back to blank English spaCy model")
+                        _spacy_model = spacy.blank("en")
     return _spacy_model
 
 def get_sentence_transformer():
     """
-    Retrieves the SentenceTransformer model. Lazy loads the model and caches it.
+    Thread-safe lazy loader for SentenceTransformer model.
+    Only imports and loads SentenceTransformer when semantic embedding or RAG search is first requested.
     """
     global _sentence_transformer_model
     if _sentence_transformer_model is None:
-        model_name = "all-MiniLM-L6-v2"
-        try:
-            logger.info(f"Loading SentenceTransformer model: {model_name}")
-            _sentence_transformer_model = SentenceTransformer(model_name)
-            logger.info(f"Successfully loaded SentenceTransformer model: {model_name}")
-        except Exception as e:
-            logger.error(f"Failed to load SentenceTransformer model {model_name}: {e}")
-            raise e
+        with _sentence_transformer_lock:
+            if _sentence_transformer_model is None:
+                from sentence_transformers import SentenceTransformer
+                model_name = "all-MiniLM-L6-v2"
+                try:
+                    logger.info(f"SentenceTransformer loading lazily: {model_name}")
+                    _sentence_transformer_model = SentenceTransformer(model_name)
+                    logger.info("SentenceTransformer loaded lazily")
+                except Exception as e:
+                    logger.error(f"Failed to load SentenceTransformer model {model_name}: {e}")
+                    raise e
     return _sentence_transformer_model
 
-def prewarm_models():
-    """
-    Pre-warms NLP models on startup.
-    """
-    logger.info("Initializing pre-warming of AI/NLP models...")
-    try:
-        get_spacy_model()
-        get_sentence_transformer()
-        logger.info("AI/NLP models successfully pre-warmed and cached.")
-    except Exception as e:
-        logger.error(f"Error during pre-warming AI/NLP models: {e}")

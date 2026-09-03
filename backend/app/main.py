@@ -1,11 +1,9 @@
-import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.settings import settings
 from app.core.logger import logger
-from app.core.cache import prewarm_models
 from app.database.database import Base, engine
 
 # Import Middlewares
@@ -26,9 +24,6 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Database schema auto-creation encountered non-fatal error: {e}")
 
-    # Launch AI/NLP model pre-warming in background to allow Uvicorn to bind port immediately
-    asyncio.create_task(asyncio.to_thread(prewarm_models))
-    
     yield
     # Shutdown actions
     logger.info("FastAPI Application shutting down...")
