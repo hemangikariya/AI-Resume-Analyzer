@@ -166,6 +166,66 @@ class AnalysisService:
             raise e
 
     @staticmethod
+    def _get_resume_ats_metrics(
+        db: Session,
+        resume_id: int,
+        jd_id: Optional[int],
+        user_id: int
+    ) -> Dict[str, Any]:
+        """
+        Retrieves cached ATS metrics or computes deterministic score/skills on the fly without heavy LLM calls.
+        """
+        # Check if cached analysis exists
+        existing_analysis = db.query(Analysis).filter(
+            Analysis.resume_id == resume_id,
+            Analysis.jd_id == jd_id
+        ).first()
+        
+        if existing_analysis and existing_analysis.ats_result:
+            resume = db.query(Resume).filter(Resume.id == resume_id, Resume.user_id == user_id).first()
+            if not resume:
+                raise ValueError("Resume not found or access denied.")
+            return {
+                "ats_score": existing_analysis.ats_result.ats_score,
+                "score_breakdown": existing_analysis.ats_result.score_breakdown,
+                "checklist": existing_analysis.ats_result.checklist,
+                "resume_health": existing_analysis.ats_result.resume_health,
+                "matched_skills": resume.parsed_data.get("skills", [])
+            }
+            
+        # Retrieve resume & JD
+        resume = db.query(Resume).filter(Resume.id == resume_id, Resume.user_id == user_id).first()
+        if not resume:
+            raise ValueError("Resume not found or access denied.")
+            
+        jd_text = None
+        jd_skills = []
+        if jd_id:
+            jd = db.query(JobDescription).filter(JobDescription.id == jd_id, JobDescription.user_id == user_id).first()
+            if not jd:
+                raise ValueError("Job Description not found or access denied.")
+            jd_text = jd.jd_text
+            jd_skills = jd.extracted_skills or []
+            
+        # Run deterministic ATS calculation (0.40 Skills + 0.25 Semantic + 0.15 Experience + 0.10 Projects + 0.10 Formatting)
+        ats_results = run_ats_calculation(
+            parsed_resume=resume.parsed_data,
+            resume_skills=resume.parsed_data.get("skills", []),
+            jd_text=jd_text,
+            jd_skills=jd_skills
+        )
+        
+        xai_report = generate_explainability_report(ats_results)
+        
+        return {
+            "ats_score": ats_results["ats_score"],
+            "score_breakdown": ats_results["score_breakdown"],
+            "checklist": ats_results["checklist"],
+            "resume_health": xai_report["resume_health"],
+            "matched_skills": resume.parsed_data.get("skills", [])
+        }
+
+    @staticmethod
     def compare_resumes(
         db: Session,
         resume_id_1: int,
@@ -175,37 +235,16 @@ class AnalysisService:
     ) -> Dict[str, Any]:
         """
         Orchestrates side-by-side version comparison analysis.
-        Runs/reads analysis for both resumes and matches delta scores.
+        Retrieves or deterministically calculates ATS metrics for both versions without Render timeout.
         """
         logger.info(f"Comparing resume versions: {resume_id_1} vs {resume_id_2}")
         
-        # 1. Run/Retrieve analysis for both versions
-        analysis_1 = AnalysisService.run_resume_analysis(db, resume_id_1, jd_id, user_id)
-        analysis_2 = AnalysisService.run_resume_analysis(db, resume_id_2, jd_id, user_id)
+        # 1. Retrieve/Calculate ATS metrics for both versions
+        ats_1 = AnalysisService._get_resume_ats_metrics(db, resume_id_1, jd_id, user_id)
+        ats_2 = AnalysisService._get_resume_ats_metrics(db, resume_id_2, jd_id, user_id)
         
-        # 2. Extract ATS results
-        ats_1 = {
-            "ats_score": analysis_1.ats_result.ats_score,
-            "score_breakdown": analysis_1.ats_result.score_breakdown,
-            "checklist": analysis_1.ats_result.checklist,
-            "resume_health": analysis_1.ats_result.resume_health,
-            "matched_skills": [item["skill"] for item in analysis_1.ats_result.missing_skills if item["priority"] == 0] # fallback extractor
-        }
-        # Get actual matched list from resume
-        resume_1 = db.query(Resume).filter(Resume.id == resume_id_1).first()
-        resume_2 = db.query(Resume).filter(Resume.id == resume_id_2).first()
-        
-        ats_1["matched_skills"] = resume_1.parsed_data.get("skills", [])
-        
-        ats_2 = {
-            "ats_score": analysis_2.ats_result.ats_score,
-            "score_breakdown": analysis_2.ats_result.score_breakdown,
-            "checklist": analysis_2.ats_result.checklist,
-            "resume_health": analysis_2.ats_result.resume_health,
-            "matched_skills": resume_2.parsed_data.get("skills", [])
-        }
-        
-        # 3. Call Comparison Engine
+        # 2. Call Comparison Engine
         comparison_data = compare_resume_versions(ats_1, ats_2)
         
         return comparison_data
+
