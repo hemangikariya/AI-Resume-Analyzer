@@ -5,7 +5,8 @@ import api from "../services/api";
 import { 
   Upload, FileText, Trash2, ArrowRight, MessageSquare, Play, 
   RefreshCw, LogOut, Sun, Moon, Sparkles, Award, Download,
-  BookOpen, Copy, Check, TrendingUp, BarChart2, Layers
+  BookOpen, Copy, Check, TrendingUp, BarChart2, Layers,
+  CheckCircle2, AlertCircle, X
 } from "lucide-react";
 import { 
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, 
@@ -23,6 +24,7 @@ interface ResumeItem {
 interface JDItem {
   id: number;
   title: string;
+  jd_text?: string;
   created_at: string;
   extracted_skills?: string[];
 }
@@ -74,6 +76,7 @@ const Dashboard: React.FC = () => {
   const [analyticsData, setAnalyticsData] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
   
   // Active Analysis State (Persisted Hub)
   const [activeAnalysis, setActiveAnalysis] = useState<ActiveAnalysisData | null>(null);
@@ -85,7 +88,7 @@ const Dashboard: React.FC = () => {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
   
-  // JD Paste states
+  // JD Form states
   const [jdTitle, setJdTitle] = useState("");
   const [jdText, setJdText] = useState("");
   
@@ -102,13 +105,13 @@ const Dashboard: React.FC = () => {
   const [activeAITool, setActiveAITool] = useState<"health" | "roadmap" | "rewrite" | "project" | "cover">("health");
   
   // Bullet Rewriter State
-  const [rewriteInput, setRewriteInput] = useState("");
+  const [rewriteInput, setRewriteInput] = useState("Architected scalable backend microservices and improved system response time.");
   const [rewriteOutput, setRewriteOutput] = useState("");
   const [isRewriting, setIsRewriting] = useState(false);
   
   // Project Enhancer State
-  const [projTitleInput, setProjTitleInput] = useState("");
-  const [projDescInput, setProjDescInput] = useState("");
+  const [projTitleInput, setProjTitleInput] = useState("Distributed Task Queue");
+  const [projDescInput, setProjDescInput] = useState("Built an asynchronous background task queue with Redis and Python workers.");
   const [enhancedProjResult, setEnhancedProjResult] = useState<any>(null);
   const [isEnhancing, setIsEnhancing] = useState(false);
   
@@ -188,6 +191,10 @@ const Dashboard: React.FC = () => {
             setSelectedResumeId(analysisData.resume_id.toString());
             if (analysisData.jd_id) {
               setSelectedJdId(analysisData.jd_id.toString());
+              if (matchedJd) {
+                setJdTitle(matchedJd.title);
+                setJdText(matchedJd.jd_text || "");
+              }
             }
           }
         } catch (err) {
@@ -202,6 +209,8 @@ const Dashboard: React.FC = () => {
         if (jdList.length > 0) {
           setSelectedJdId(jdList[0].id.toString());
           setActiveJd(jdList[0]);
+          setJdTitle(jdList[0].title);
+          setJdText(jdList[0].jd_text || "");
         }
       }
       
@@ -240,6 +249,7 @@ const Dashboard: React.FC = () => {
     setIsUploading(true);
     setUploadProgress(20);
     setError(null);
+    setSuccessMsg(null);
     
     const formData = new FormData();
     formData.append("file", uploadFile);
@@ -255,6 +265,7 @@ const Dashboard: React.FC = () => {
         const uploadedResume = res.data.data.resume;
         setUploadFile(null);
         setSelectedResumeId(uploadedResume.id.toString());
+        setSuccessMsg(`Resume "${uploadedResume.filename}" uploaded and parsed successfully.`);
         await loadDashboardData();
       }
     } catch (err: any) {
@@ -266,24 +277,57 @@ const Dashboard: React.FC = () => {
     }
   };
 
-  // Create Job Description
+  // Saved JD Click Handler - Populates Title, Full JD Text, and selects JD
+  const handleSelectSavedJD = async (j: JDItem) => {
+    setSelectedJdId(j.id.toString());
+    setJdTitle(j.title);
+    setError(null);
+    setSuccessMsg(`Loaded target JD: "${j.title}"`);
+    
+    if (j.jd_text) {
+      setJdText(j.jd_text);
+      setActiveJd(j);
+    } else {
+      try {
+        const res = await api.get(`/job-descriptions/${j.id}`);
+        if (res.data?.success) {
+          const fullJd = res.data.data.jd;
+          setJdText(fullJd.jd_text || "");
+          setActiveJd(fullJd);
+        }
+      } catch (err) {
+        console.error("Error fetching full JD text:", err);
+      }
+    }
+  };
+
+  // Clear JD selection / form
+  const handleClearJD = () => {
+    setSelectedJdId("");
+    setJdTitle("");
+    setJdText("");
+    setActiveJd(null);
+  };
+
+  // Create or Update Job Description
   const handleSaveJD = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!jdTitle.trim() || !jdText.trim()) {
-      setError("Please fill in the Job Title and paste the Job Description content.");
+      setError("Please fill in both the Job Title and Job Requirements text.");
       return;
     }
     
     setError(null);
     setIsLoading(true);
+    setSuccessMsg(null);
     
     try {
       const res = await api.post("/job-descriptions", { title: jdTitle, jd_text: jdText });
       if (res.data.success) {
         const savedJd = res.data.data.jd;
-        setJdTitle("");
-        setJdText("");
         setSelectedJdId(savedJd.id.toString());
+        setActiveJd(savedJd);
+        setSuccessMsg(`Job Description "${savedJd.title}" saved and skills extracted successfully.`);
         await loadDashboardData();
       }
     } catch (err: any) {
@@ -294,7 +338,23 @@ const Dashboard: React.FC = () => {
     }
   };
 
-  // Run full Match Analysis
+  // Delete Job Description
+  const handleDeleteJD = async (id: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirm("Are you sure you want to delete this Job Description?")) return;
+    try {
+      await api.delete(`/job-descriptions/${id}`);
+      if (selectedJdId === id.toString()) {
+        handleClearJD();
+      }
+      await loadDashboardData();
+    } catch (err) {
+      console.error("Delete JD error:", err);
+      setError("Failed to delete Job Description.");
+    }
+  };
+
+  // Run full Match Analysis with query params
   const handleRunAnalysis = async () => {
     if (!selectedResumeId) {
       setError("Please select a resume version to analyze.");
@@ -303,19 +363,43 @@ const Dashboard: React.FC = () => {
     
     setError(null);
     setIsLoading(true);
+    setSuccessMsg(null);
     
     try {
-      const jdQuery = selectedJdId ? `?jd_id=${selectedJdId}` : "";
-      const res = await api.post(`/analysis?resume_id=${selectedResumeId}${jdQuery}`);
-      if (res.data.success) {
-        const newAnalysisId = res.data.data.analysis.id;
-        localStorage.setItem("activeAnalysisId", newAnalysisId.toString());
-        await loadDashboardData(newAnalysisId);
-        navigate(`/analysis/${newAnalysisId}`);
+      const params = new URLSearchParams();
+      params.append("resume_id", selectedResumeId);
+      if (selectedJdId) {
+        params.append("jd_id", selectedJdId);
+      }
+      
+      const res = await api.post(`/analysis?${params.toString()}`);
+      if (res.data?.success) {
+        const newAnalysis: ActiveAnalysisData = res.data.data.analysis;
+        setActiveAnalysis(newAnalysis);
+        localStorage.setItem("activeAnalysisId", newAnalysis.id.toString());
+        
+        // Update active resume and active JD
+        const matchedResume = resumes.find(r => r.id.toString() === selectedResumeId) || null;
+        const matchedJd = jds.find(j => j.id.toString() === selectedJdId) || null;
+        setActiveResume(matchedResume);
+        setActiveJd(matchedJd);
+        
+        setSuccessMsg(`ATS Analysis calculated successfully! Overall Score: ${newAnalysis.ats_result?.ats_score ?? 0}%`);
+        await loadDashboardData(newAnalysis.id);
       }
     } catch (err: any) {
       console.error("Run analysis error:", err);
-      setError(err.response?.data?.detail?.error?.message || "Failed to calculate match parameters.");
+      let errorMsg = "ATS analysis failed: unable to calculate match parameters.";
+      if (err.response?.data?.detail) {
+        if (typeof err.response.data.detail === "string") {
+          errorMsg = err.response.data.detail;
+        } else if (err.response.data.detail?.error?.message) {
+          errorMsg = err.response.data.detail.error.message;
+        } else if (Array.isArray(err.response.data.detail)) {
+          errorMsg = err.response.data.detail.map((d: any) => d.msg || "").join(", ");
+        }
+      }
+      setError(errorMsg);
     } finally {
       setIsLoading(false);
     }
@@ -350,7 +434,7 @@ const Dashboard: React.FC = () => {
     setIsRewriting(true);
     try {
       const res = await api.post("/resumes/rewrite", { text: rewriteInput });
-      if (res.data.success) {
+      if (res.data?.success) {
         setRewriteOutput(res.data.data.rewritten_text);
       }
     } catch (err) {
@@ -370,7 +454,7 @@ const Dashboard: React.FC = () => {
         title: projTitleInput,
         description: projDescInput
       });
-      if (res.data.success) {
+      if (res.data?.success) {
         setEnhancedProjResult(res.data.data);
       }
     } catch (err) {
@@ -474,8 +558,22 @@ const Dashboard: React.FC = () => {
         {/* Error Notification Alert */}
         {error && (
           <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 text-xs flex items-center justify-between">
-            <span>{error}</span>
-            <button onClick={() => setError(null)} className="font-bold hover:underline">Dismiss</button>
+            <div className="flex items-center gap-2">
+              <AlertCircle className="h-4 w-4 shrink-0" />
+              <span>{error}</span>
+            </div>
+            <button onClick={() => setError(null)} className="font-bold hover:underline ml-4">Dismiss</button>
+          </div>
+        )}
+
+        {/* Success Notification Alert */}
+        {successMsg && (
+          <div className="p-4 rounded-xl bg-green-500/10 border border-green-500/20 text-green-500 text-xs flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4 shrink-0" />
+              <span>{successMsg}</span>
+            </div>
+            <button onClick={() => setSuccessMsg(null)} className="font-bold hover:underline ml-4">Dismiss</button>
           </div>
         )}
 
@@ -507,11 +605,11 @@ const Dashboard: React.FC = () => {
               <p className="text-xs text-dark-muted dark:text-light-muted max-w-2xl leading-relaxed">
                 {activeAnalysis ? (
                   <span>
-                    Matched against: <b className="text-white dark:text-white">{activeJd ? activeJd.title : "General Industry Profile"}</b>. 
-                    Calculated using our hybrid deterministic 5-factor scoring engine with zero synthetic hallucinations.
+                    Matched against: <b className="text-brand-400">{activeJd ? activeJd.title : "General Industry Profile"}</b>. 
+                    Deterministic formula: 40% Skills + 25% Semantic + 15% Experience + 10% Projects + 10% Formatting.
                   </span>
                 ) : (
-                  <span>No active analysis run selected. Upload a resume and click &apos;Analyze &amp; Calculate ATS Score&apos; below.</span>
+                  <span>No active analysis run selected. Select your resume and target JD below, then click &apos;Calculate &amp; Analyze ATS Score&apos;.</span>
                 )}
               </p>
               
@@ -683,7 +781,24 @@ const Dashboard: React.FC = () => {
                           </div>
                         ))}
                       </div>
-                      <div className="flex justify-between items-center text-xs text-dark-muted dark:text-light-muted pt-2 border-t border-border">
+
+                      {/* Missing Skills / Skill Gap Breakdown */}
+                      {ats.missing_skills && ats.missing_skills.length > 0 && (
+                        <div className="mt-4 pt-3 border-t border-border">
+                          <span className="text-[10px] uppercase font-bold text-dark-muted dark:text-light-muted block mb-2">
+                            Prioritized Skill Gaps:
+                          </span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {ats.missing_skills.map((item, idx) => (
+                              <span key={idx} className="px-2.5 py-1 rounded-lg text-[10px] font-semibold bg-red-500/10 border border-red-500/20 text-red-400">
+                                {item.skill} (P{item.priority})
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="flex justify-between items-center text-xs text-dark-muted dark:text-light-muted pt-3 mt-3 border-t border-border">
                         <span>Checklist pass: {Object.values(ats.checklist || {}).filter(Boolean).length} / {Object.keys(ats.checklist || {}).length} structural checks</span>
                         {activeAnalysis && (
                           <button onClick={() => navigate(`/analysis/${activeAnalysis.id}`)} className="text-brand-accent font-semibold hover:underline">
@@ -693,9 +808,11 @@ const Dashboard: React.FC = () => {
                       </div>
                     </div>
                   ) : (
-                    <p className="text-xs text-dark-muted dark:text-light-muted py-4 text-center">
-                      Run an ATS analysis above to view section-by-section health ratings.
-                    </p>
+                    <div className="p-6 rounded-xl bg-white/5 border border-dashed border-border text-center">
+                      <Award className="h-8 w-8 text-dark-muted dark:text-light-muted mx-auto mb-2" />
+                      <p className="text-xs font-semibold">No Health Data Available</p>
+                      <p className="text-[10px] text-dark-muted dark:text-light-muted mt-1">Select a resume and click &apos;Calculate &amp; Analyze ATS Score&apos; above to generate section health ratings.</p>
+                    </div>
                   )}
                 </div>
               )}
@@ -705,7 +822,7 @@ const Dashboard: React.FC = () => {
                 <div>
                   {activeAnalysis?.roadmap && activeAnalysis.roadmap.length > 0 ? (
                     <div className="flex flex-col gap-3">
-                      {activeAnalysis.roadmap.slice(0, 3).map((step, idx) => (
+                      {activeAnalysis.roadmap.slice(0, 4).map((step, idx) => (
                         <div key={idx} className="p-3.5 rounded-xl bg-white/5 border border-border flex items-start gap-3">
                           <div className="h-6 w-6 rounded-full bg-brand-accent text-white flex items-center justify-center font-bold text-xs shrink-0">
                             {idx + 1}
@@ -718,15 +835,17 @@ const Dashboard: React.FC = () => {
                         </div>
                       ))}
                       {activeAnalysis && (
-                        <button onClick={() => navigate(`/analysis/${activeAnalysis.id}`)} className="text-xs text-brand-accent font-semibold hover:underline self-end mt-1">
+                        <button onClick={() => navigate(`/analysis/${activeAnalysis.id}#roadmap`)} className="text-xs text-brand-accent font-semibold hover:underline self-end mt-1">
                           View Complete Roadmap Plan &rarr;
                         </button>
                       )}
                     </div>
                   ) : (
-                    <p className="text-xs text-dark-muted dark:text-light-muted py-4 text-center">
-                      Run an ATS analysis with a target Job Description to generate a tailored skill acceleration plan.
-                    </p>
+                    <div className="p-6 rounded-xl bg-white/5 border border-dashed border-border text-center">
+                      <BookOpen className="h-8 w-8 text-dark-muted dark:text-light-muted mx-auto mb-2" />
+                      <p className="text-xs font-semibold">No Roadmap Generated</p>
+                      <p className="text-[10px] text-dark-muted dark:text-light-muted mt-1">Run ATS analysis with a target Job Description to generate a tailored skill acceleration roadmap.</p>
+                    </div>
                   )}
                 </div>
               )}
@@ -743,21 +862,21 @@ const Dashboard: React.FC = () => {
                       onChange={(e) => setRewriteInput(e.target.value)}
                       placeholder="e.g. Worked on database queries to make them faster."
                       rows={2}
-                      className="glass-input resize-none"
+                      className="glass-input resize-none text-xs"
                     />
                   </div>
                   
                   <button
                     onClick={handleRunRewrite}
                     disabled={isRewriting || !rewriteInput.trim()}
-                    className="px-5 py-2 rounded-xl bg-brand-accent text-white font-semibold text-xs hover:bg-brand-600 disabled:opacity-50 transition-colors self-end flex items-center gap-1.5"
+                    className="px-5 py-2 rounded-xl bg-brand-accent text-white font-semibold text-xs hover:bg-brand-600 disabled:opacity-50 transition-colors self-end flex items-center gap-1.5 shadow-sm"
                   >
                     {isRewriting ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
                     {isRewriting ? "Optimizing..." : "Optimize Bullet Point"}
                   </button>
 
                   {rewriteOutput && (
-                    <div className="p-4 rounded-xl border border-brand-accent/20 bg-brand-accent/5 flex flex-col gap-1 text-xs">
+                    <div className="p-4 rounded-xl border border-brand-accent/30 bg-brand-accent/5 flex flex-col gap-1 text-xs">
                       <span className="text-[10px] uppercase font-bold text-brand-500">Resume-Ready Bullet Point:</span>
                       <p className="font-semibold text-brand-600 dark:text-brand-300 leading-relaxed">{rewriteOutput}</p>
                     </div>
@@ -785,7 +904,7 @@ const Dashboard: React.FC = () => {
                   <button
                     onClick={handleRunProjectEnhance}
                     disabled={isEnhancing || !projTitleInput.trim() || !projDescInput.trim()}
-                    className="px-5 py-2 rounded-xl bg-brand-accent text-white font-semibold text-xs hover:bg-brand-600 disabled:opacity-50 transition-colors self-end flex items-center gap-1.5"
+                    className="px-5 py-2 rounded-xl bg-brand-accent text-white font-semibold text-xs hover:bg-brand-600 disabled:opacity-50 transition-colors self-end flex items-center gap-1.5 shadow-sm"
                   >
                     {isEnhancing ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Layers className="h-3.5 w-3.5" />}
                     {isEnhancing ? "Architecting..." : "Generate Project Stack & Bullets"}
@@ -825,9 +944,11 @@ const Dashboard: React.FC = () => {
                       </button>
                     </div>
                   ) : (
-                    <p className="text-xs text-dark-muted dark:text-light-muted py-4 text-center">
-                      Upload a Job Description and run analysis to automatically generate a tailored cover letter.
-                    </p>
+                    <div className="p-6 rounded-xl bg-white/5 border border-dashed border-border text-center">
+                      <FileText className="h-8 w-8 text-dark-muted dark:text-light-muted mx-auto mb-2" />
+                      <p className="text-xs font-semibold">No Cover Letter Generated</p>
+                      <p className="text-[10px] text-dark-muted dark:text-light-muted mt-1">Select a target Job Description and run analysis to automatically generate a tailored cover letter.</p>
+                    </div>
                   )}
                 </div>
               )}
@@ -885,12 +1006,23 @@ const Dashboard: React.FC = () => {
               )}
             </div>
 
-            {/* SECTION 3: Paste Job Description */}
+            {/* SECTION 3: Add / Edit Target Job Description */}
             <div className="glass-panel p-6">
-              <h2 className="text-base font-bold mb-4 flex items-center gap-2">
-                <FileText className="text-brand-500 h-5 w-5" />
-                Add Target Job Description
-              </h2>
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-base font-bold flex items-center gap-2">
+                  <FileText className="text-brand-500 h-5 w-5" />
+                  {selectedJdId ? `Target Job Description (Active: ${jds.find(j => j.id.toString() === selectedJdId)?.title || "Selected"})` : "Add Target Job Description"}
+                </h2>
+                {(selectedJdId || jdTitle || jdText) && (
+                  <button
+                    onClick={handleClearJD}
+                    className="text-[10px] text-dark-muted dark:text-light-muted hover:text-white flex items-center gap-1 border border-border px-2 py-1 rounded-lg"
+                  >
+                    <X className="h-3 w-3" /> Clear / New JD
+                  </button>
+                )}
+              </div>
+              
               <form onSubmit={handleSaveJD} className="flex flex-col gap-3">
                 <input
                   type="text"
@@ -903,7 +1035,7 @@ const Dashboard: React.FC = () => {
                   value={jdText}
                   onChange={(e) => setJdText(e.target.value)}
                   placeholder="Paste the full job requirements text here..."
-                  rows={3}
+                  rows={4}
                   className="glass-input resize-none text-xs"
                 />
                 <button
@@ -911,7 +1043,7 @@ const Dashboard: React.FC = () => {
                   disabled={isLoading || !jdTitle.trim() || !jdText.trim()}
                   className="px-5 py-2 rounded-xl border border-border hover:bg-white/10 font-semibold text-xs transition-colors self-end disabled:opacity-50"
                 >
-                  Save & Extract Skills
+                  {selectedJdId ? "Save / Update Job Description" : "Save & Extract Skills"}
                 </button>
               </form>
             </div>
@@ -943,7 +1075,15 @@ const Dashboard: React.FC = () => {
                   <label className="text-xs font-semibold text-dark-muted dark:text-light-muted">Select Job Description</label>
                   <select
                     value={selectedJdId}
-                    onChange={(e) => setSelectedJdId(e.target.value)}
+                    onChange={(e) => {
+                      setSelectedJdId(e.target.value);
+                      const found = jds.find(j => j.id.toString() === e.target.value);
+                      if (found) {
+                        setJdTitle(found.title);
+                        setJdText(found.jd_text || "");
+                        setActiveJd(found);
+                      }
+                    }}
                     className="glass-input text-xs"
                   >
                     <option value="">-- General Analysis (No JD Match) --</option>
@@ -1200,16 +1340,52 @@ const Dashboard: React.FC = () => {
             {/* Saved Job Descriptions List */}
             {jds.length > 0 && (
               <div className="glass-panel p-6 flex flex-col gap-4">
-                <h3 className="font-bold text-xs uppercase tracking-wider text-dark-muted dark:text-light-muted">
-                  Saved Job Descriptions ({jds.length})
-                </h3>
+                <div className="flex justify-between items-center">
+                  <h3 className="font-bold text-xs uppercase tracking-wider text-dark-muted dark:text-light-muted">
+                    Saved Job Descriptions ({jds.length})
+                  </h3>
+                  <span className="text-[9px] text-brand-400 font-mono">Click to Load & Edit</span>
+                </div>
                 
                 <div className="flex flex-col gap-2">
-                  {jds.map((j) => (
-                    <div key={j.id} className="p-2.5 rounded-xl bg-white/5 border border-border text-xs">
-                      <span className="font-semibold truncate block">{j.title}</span>
-                    </div>
-                  ))}
+                  {jds.map((j) => {
+                    const isSelected = selectedJdId === j.id.toString();
+                    return (
+                      <div
+                        key={j.id}
+                        onClick={() => handleSelectSavedJD(j)}
+                        className={`p-3 rounded-xl border cursor-pointer transition-all flex items-center justify-between gap-2 ${
+                          isSelected 
+                            ? "bg-brand-accent/15 border-brand-500 shadow-sm" 
+                            : "bg-white/5 border-border hover:border-brand-500/40 hover:bg-white/10"
+                        }`}
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className={`font-semibold text-xs truncate ${isSelected ? "text-brand-400" : ""}`}>
+                              {j.title}
+                            </span>
+                            {isSelected && (
+                              <span className="px-1.5 py-0.2 rounded text-[8px] font-bold uppercase bg-brand-500 text-white">
+                                Active
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[10px] text-dark-muted dark:text-light-muted truncate mt-0.5">
+                            {j.extracted_skills?.slice(0, 4).join(", ") || "Skills extracted"}
+                          </p>
+                        </div>
+                        
+                        <button
+                          onClick={(e) => handleDeleteJD(j.id, e)}
+                          className="p-1 rounded-lg border border-border text-red-500 hover:bg-red-500/10 transition-colors shrink-0"
+                          title="Delete JD"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
