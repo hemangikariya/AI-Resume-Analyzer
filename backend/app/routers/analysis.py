@@ -114,6 +114,7 @@ async def get_dashboard_analytics(
     """
     Returns aggregated dashboard statistics including ATS trends, skill distribution, and health averages.
     """
+    import json
     from app.models.analysis import Analysis
     from app.models.resume import Resume
     from app.models.ats_result import ATSResult
@@ -127,23 +128,45 @@ async def get_dashboard_analytics(
     for r in records:
         ats = r.ats_result
         if ats:
+            r_version = f"V{r.resume.version}" if r.resume and hasattr(r.resume, "version") else f"Analysis #{r.id}"
+            r_date = r.created_at.strftime("%Y-%m-%d") if r.created_at else "Recent"
             ats_trends.append({
-                "date": r.created_at.strftime("%Y-%m-%d"),
-                "score": ats.ats_score,
-                "resume_version": f"V{r.resume.version}"
+                "date": r_date,
+                "score": int(ats.ats_score) if ats.ats_score is not None else 0,
+                "resume_version": r_version
             })
-            for key in ["skills", "experience", "projects", "formatting"]:
-                val = ats.resume_health.get(key)
-                if val:
-                    health_aggregates[key].append(val)
+            
+            raw_health = ats.resume_health
+            if isinstance(raw_health, str):
+                try:
+                    raw_health = json.loads(raw_health)
+                except Exception:
+                    raw_health = {}
+            if isinstance(raw_health, dict):
+                for key in ["skills", "experience", "projects", "formatting"]:
+                    val = raw_health.get(key)
+                    if val:
+                        health_aggregates[key].append(val)
                     
     # 2. Fetch user's resumes and build skill distribution frequency
     resumes = db.query(Resume).filter(Resume.user_id == current_user.id).all()
     skill_counts = {}
     for res in resumes:
-        skills = res.parsed_data.get("skills", [])
-        for s in skills:
-            skill_counts[s] = skill_counts.get(s, 0) + 1
+        pdata = res.parsed_data
+        if isinstance(pdata, str):
+            try:
+                pdata = json.loads(pdata)
+            except Exception:
+                pdata = {}
+        if not isinstance(pdata, dict):
+            pdata = {}
+            
+        skills = pdata.get("skills", [])
+        if isinstance(skills, list):
+            for s in skills:
+                if s:
+                    s_str = str(s).strip()
+                    skill_counts[s_str] = skill_counts.get(s_str, 0) + 1
             
     # Format skill distribution
     skill_distribution = [{"skill": k, "count": v} for k, v in sorted(skill_counts.items(), key=lambda x: x[1], reverse=True)[:10]]

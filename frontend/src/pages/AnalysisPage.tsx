@@ -194,18 +194,25 @@ const AnalysisPage: React.FC = () => {
           <ArrowLeft className="h-4 w-4" />
           Back to Dashboard
         </button>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-2.5">
+          <button
+            onClick={() => navigate(`/interview/${analysis.resume_id}`)}
+            className="px-3.5 py-1.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 font-semibold text-xs flex items-center gap-1.5 transition-colors"
+          >
+            <Award className="h-4 w-4" />
+            Mock Interview
+          </button>
           <button
             onClick={() => navigate(`/chat/${analysis.resume_id}`)}
-            className="px-4 py-2 rounded-xl border border-border hover:bg-white/5 font-semibold text-xs flex items-center gap-1.5 transition-colors"
+            className="px-3.5 py-1.5 rounded-xl border border-border hover:bg-white/5 font-semibold text-xs flex items-center gap-1.5 transition-colors"
           >
-            <MessageSquare className="h-4 w-4" />
+            <MessageSquare className="h-4 w-4 text-brand-400" />
             Resume Chat
           </button>
           <button
             onClick={handleDownloadPDF}
             disabled={downloading}
-            className="px-4 py-2 rounded-xl bg-brand-accent text-white hover:bg-brand-600 font-semibold text-xs flex items-center gap-1.5 transition-colors"
+            className="px-4 py-1.5 rounded-xl bg-brand-accent text-white hover:bg-brand-600 font-semibold text-xs flex items-center gap-1.5 transition-colors shadow-sm"
           >
             <Download className="h-4 w-4" />
             {downloading ? "Downloading..." : "Export PDF Report"}
