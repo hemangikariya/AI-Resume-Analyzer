@@ -19,6 +19,33 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str = ""
     MODEL_NAME: str = "gemini-1.5-flash"
 
+    # CORS Settings
+    CORS_ORIGINS: str = (
+        "https://ai-resume-analyzer-sigma-fawn.vercel.app,"
+        "https://ai-resume-analyzer-47027q7w7-hemangikariyas-projects.vercel.app,"
+        "http://localhost:5173,"
+        "http://127.0.0.1:5173,"
+        "http://localhost:3000,"
+        "http://127.0.0.1:3000"
+    )
+
+    @property
+    def cors_origins_list(self) -> list[str]:
+        if not self.CORS_ORIGINS:
+            return [
+                "https://ai-resume-analyzer-sigma-fawn.vercel.app",
+                "https://ai-resume-analyzer-47027q7w7-hemangikariyas-projects.vercel.app",
+                "http://localhost:5173",
+                "http://127.0.0.1:5173",
+            ]
+        if isinstance(self.CORS_ORIGINS, list):
+            return self.CORS_ORIGINS
+        return [
+            origin.strip()
+            for origin in self.CORS_ORIGINS.split(",")
+            if origin.strip()
+        ]
+
     # Storage Locations
     UPLOAD_DIR: str = "./storage"
     LOG_FILE: str = "./logs/backend.log"
